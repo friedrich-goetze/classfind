@@ -56,12 +56,13 @@ dependencies {
 def jdk_archive = new File("$projectDir/jdk/jdk_$targetOs${targetOs == 'linux' ? '.tar.gz' : '.zip'}")
 def jdk_path = new File("$projectDir/jdk/$targetOs")
 def jdk_path_extracted = new File(jdk_path, "jdk-11")
+def launcherName = 'classfind'
 
 jlink {
     addOptions('--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages')
     targetPlatform(targetOs, jdk_path_extracted.absolutePath)
     launcher {
-        name = 'classes'
+        name = launcherName
     }
 }
 
@@ -89,7 +90,21 @@ task prepareJdk(dependsOn: downloadJdk, type: Copy) {
     }
 }
 
+task copyStartScripts(type: Copy) {
+    def imageDir = new File("$buildDir/image/$launcherName-$targetOs/")
+    if (targetOs == 'win32') {
+        from new File(imageDir, "bin/${launcherName}.bat")
+        filter { line -> line.replace('../app', 'app').replace('\\java', 'bin\\java') }
+    } else if (targetOs == 'linux') {
+        from new File(imageDir, "bin/${launcherName}")
+        filter { line -> line.replace('../app', 'app').replace('$DIR/java', '$DIR/bin/java') }
+    }
+    into imageDir
+}
+
 tasks.jlink.dependsOn prepareJdk
+tasks.jlink.finalizedBy copyStartScripts
+
 
 tasks.jlink.doLast {
     copy {
