@@ -19,5 +19,21 @@
 *.tar.gz
 *.rar
 
+jdk/
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+/.idea/*
+!/.idea/codeStyles
+.gradle
+.gradletasknamecache
+build/
+*.iml
+hs_err_*.log
+out/
+svgCache/
+.classpath
+.project
+.settings/
+bin/

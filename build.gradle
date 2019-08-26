@@ -1,0 +1,119 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+buildscript {
+    ext {
+        kotlin_version = '1.3.50'
+        kotlin_coroutines_version = '1.3.0'
+
+        targetOs = System.getProperty("targetOs")
+        if (targetOs == null) {
+            if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+                targetOs = 'win32'
+            } else if (Os.isFamily(Os.FAMILY_UNIX)) {
+                targetOs = 'linux';
+            } else {
+                throw Exception("Operating System is not supported: ${System.getProperty("os.name")}")
+            }
+        }
+    }
+
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "org.beryx:badass-jlink-plugin:2.14.0"
+        classpath "org.javamodularity:moduleplugin:1.5.0"
+        classpath "de.undercouch:gradle-download-task:4.0.0"
+    }
+}
+
+apply plugin: 'idea'
+apply plugin: 'kotlin'
+apply plugin: 'org.beryx.jlink'
+apply plugin: 'org.javamodularity.moduleplugin'
+apply plugin: 'de.undercouch.download'
+
+mainClassName = 'de.mf.classfind.MainKt'
+
+group 'de.mf.classfind'
+version '0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:$kotlin_coroutines_version"
+    implementation 'org.ow2.asm:asm:7.1'
+}
+
+def jdk_archive = new File("$projectDir/jdk/jdk_$targetOs${targetOs == 'linux' ? '.tar.gz' : '.zip'}")
+def jdk_path = new File("$projectDir/jdk/$targetOs")
+def jdk_path_extracted = new File(jdk_path, "jdk-11")
+
+jlink {
+    addOptions('--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages')
+    targetPlatform(targetOs, jdk_path_extracted.absolutePath)
+    launcher {
+        name = 'classfind'
+    }
+}
+
+task downloadJdk(type: Download) {
+    if (targetOs == 'win32') {
+        src 'https://download.java.net/openjdk/jdk11/ri/openjdk-11+28_windows-x64_bin.zip'
+    } else if (targetOs == 'linux') {
+        src 'https://download.java.net/openjdk/jdk11/ri/openjdk-11+28_linux-x64_bin.tar.gz'
+    }
+    dest jdk_archive
+    overwrite false
+}
+
+task prepareJdk(dependsOn: downloadJdk, type: Copy) {
+    if (jdk_archive.name.endsWith('.tar.gz')) {
+        from tarTree(jdk_archive)
+    } else {
+        from zipTree(jdk_archive)
+    }
+    into jdk_path
+    eachFile {
+        if (it.relativePath.getFile(jdk_path).exists()) {
+            it.exclude()
+        }
+    }
+}
+
+task copyStartScripts(type: Copy) {
+    def imageDir = new File("$buildDir/image/Messzyl-$targetOs/")
+    if (targetOs == 'win32') {
+        from new File(imageDir, "bin/Messzyl.bat")
+        filter { line -> line.replace('../app', 'app').replace('\\java', 'bin\\java') }
+    } else if (targetOs == 'linux') {
+        from new File(imageDir, "bin/Messzyl")
+        filter { line -> line.replace('../app', 'app').replace('$DIR/java', '$DIR/bin/java') }
+    }
+    into imageDir
+}
+
+tasks.jlink.dependsOn prepareJdk
+tasks.jlink.finalizedBy copyStartScripts
+
+tasks.jlink.doLast {
+    copy {
+        from('src/main/resources')
+        into("$buildDir/image/bin")
+    }
+}
+
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}
